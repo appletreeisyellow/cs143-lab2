@@ -129,7 +129,16 @@ object CS143Utils {
     */
   def getUdfFromExpressions(expressions: Seq[Expression]): ScalaUdf = {
     /* IMPLEMENT THIS METHOD */
-    null
+    //null
+    
+    var udf: ScalaUdf = null
+    expressions.foreach{ (exp: Expression) => {
+        if(exp.isInstanceOf[ScalaUdf]) {
+          udf = exp.asInstanceOf[ScalaUdf]
+        }
+      }
+    }
+    udf
   }
 
   /**
@@ -181,7 +190,7 @@ object CS143Utils {
     * @param allowedMemory the maximum amount of memory allowed for the input collection
     * @return true if the addition of a new record will make the table grow beyond the allowed size
     */
-  private def maybeSpill[K, V](collection: SizeTrackingAppendOnlyMap[K, V], allowedMemory: Long): Boolean = {
+  def maybeSpill[K, V](collection: SizeTrackingAppendOnlyMap[K, V], allowedMemory: Long): Boolean = {
     /* IMPLEMENT THIS METHOD */
     false
   }
@@ -224,13 +233,43 @@ object CachingIteratorGenerator {
 
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        false
+        //false
+        if(input.hasNext)
+          true
+        else {
+          cache.clear // TODO: do we need to clear cache?
+          false
+        }
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
-      }
+        //null
+
+        //cacheKeys.foreach{(e: Expression) => println(e.toString) } // sid#0 gpa#1
+        //println(udf.toString)                 // scalaUDF(sid#0)
+        //println(udfProject.toString)          // Row => [scalaUDF(input[0])]
+        //println(cacheKeyProjection.toString)  // Row => [input[0]]
+
+        if(!input.hasNext)
+          null
+        else {
+          val inputRow = input.next
+          val key: Row = cacheKeyProjection(inputRow)
+          if(cache.containsKey(key)) {
+            cache.get(key)
+          } else {
+            val result: JavaArrayList[Any] = new JavaArrayList()
+            preUdfProjection(inputRow).iterator.foreach{ (c: Any) => result.add(c) }
+            udfProject(inputRow).iterator.foreach{ (c: Any) => result.add(c) } // TODO: only one udf right? then don't need to iterate
+            postUdfProjection(inputRow).iterator.foreach{ (c: Any) => result.add(c) }
+            val value: Row = Row.fromSeq(result.toArray)
+            cache.put(key, value)
+            value
+          }
+        }
+      } // end of next()
+      
     }
   }
 }
