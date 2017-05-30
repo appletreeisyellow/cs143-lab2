@@ -79,7 +79,29 @@ private[sql] class DiskPartition (
     * @param row the [[Row]] we are adding
     */
   def insert(row: Row) = {
-    /* IMPLEMENT THIS METHOD */
+    if (inputClosed) {
+      println("Input is closed")
+    }
+    else {
+      val ramSize: Int =  measurePartitionSize()
+      val newrow: JavaArrayList[Row] = new JavaArrayList[Row]
+      newrow.add(row)
+      val indataSize: Int = CS143Utils.getBytesFromList(newrow).size
+      if (ramSize + indataSize > blockSize) {
+        /* spill to dist*/
+        spillPartitionToDisk()
+        data.clear()
+        data.add(row)
+
+      }
+      else {
+        /* directly insert into data*/
+        data.add(row)
+      }
+
+
+    }
+    
   }
 
   /**
@@ -122,13 +144,17 @@ private[sql] class DiskPartition (
       var byteArray: Array[Byte] = null
 
       override def next() = {
-        /* IMPLEMENT THIS METHOD */
-        null
+        if (!currentIterator.hasNext) {
+          null
+        }
+        else {
+          currentIterator.next()
+        }
+        
       }
 
       override def hasNext() = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        fetchNextChunk()
       }
 
       /**
@@ -139,7 +165,18 @@ private[sql] class DiskPartition (
         */
       private[this] def fetchNextChunk(): Boolean = {
         /* IMPLEMENT THIS METHOD */
-        false
+        if (chunkSizeIterator.hasNext) {
+
+          byteArray = CS143Utils.getNextChunkBytes(inStream, chunkSizeIterator.next(), byteArray)
+          //byteArray = Files.read(path, chunkSizeIterator.next(), StandardOpenOption.READ)
+          currentIterator = CS143Utils.getListFromBytes(byteArray).iterator.asScala
+          true
+        }
+        else {
+          data.clear()
+          closeInput()
+          false
+        }
       }
     }
   }
@@ -152,8 +189,13 @@ private[sql] class DiskPartition (
     * also be closed.
     */
   def closeInput() = {
-    /* IMPLEMENT THIS METHOD */
     inputClosed = true
+    if(!writtenToDisk){
+      /* write to disk*/
+      spillPartitionToDisk()
+    }
+    outStream.close()
+    closePartition()
   }
 
 
