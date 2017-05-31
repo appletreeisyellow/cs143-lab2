@@ -80,28 +80,14 @@ private[sql] class DiskPartition (
     */
   def insert(row: Row) = {
     if (inputClosed) {
-      println("Input is closed")
+      throw new SparkException("The partition is closed!")
     }
-    else {
-      val ramSize: Int =  measurePartitionSize()
-      val newrow: JavaArrayList[Row] = new JavaArrayList[Row]
-      newrow.add(row)
-      val indataSize: Int = CS143Utils.getBytesFromList(newrow).size
-      if (ramSize + indataSize > blockSize) {
-        /* spill to dist*/
-        spillPartitionToDisk()
-        data.clear()
-        data.add(row)
-
-      }
-      else {
-        /* directly insert into data*/
-        data.add(row)
-      }
-
-
+    data.add(row)
+    if (measurePartitionSize() >blockSize) {
+      spillPartitionToDisk()
+      data.clear()
     }
-    
+
   }
 
   /**
@@ -142,42 +128,42 @@ private[sql] class DiskPartition (
       var currentIterator: Iterator[Row] = data.iterator.asScala
       val chunkSizeIterator: Iterator[Int] = chunkSizes.iterator().asScala
       var byteArray: Array[Byte] = null
+      
 
       override def next() = {
-        if (!currentIterator.hasNext) {
-          null
-        }
-        else {
-          currentIterator.next()
-        }
         
+        currentIterator.next()
       }
-
       override def hasNext() = {
-        fetchNextChunk()
-      }
 
-      /**
-        * Fetches the next chunk of the file and updates the iterator. Should return true
-        * unless the iterator is empty.
-        *
-        * @return true unless the iterator is empty.
-        */
-      private[this] def fetchNextChunk(): Boolean = {
-        /* IMPLEMENT THIS METHOD */
-        if (chunkSizeIterator.hasNext) {
-
-          byteArray = CS143Utils.getNextChunkBytes(inStream, chunkSizeIterator.next(), byteArray)
-          //byteArray = Files.read(path, chunkSizeIterator.next(), StandardOpenOption.READ)
-          currentIterator = CS143Utils.getListFromBytes(byteArray).iterator.asScala
-          true
+        var hasNext= currentIterator.hasNext
+        if (!hasNext){
+          hasNext = chunkSizeIterator.hasNext
+          if (hasNext){
+            fetchNextChunk()
+          }
         }
-        else {
-          data.clear()
-          closeInput()
+        hasNext
+       // false
+      }
+      /**
+       * Fetches the next chunk of the file and updates the iterator. Should return true
+       * unless the iterator is empty.
+       *
+       * @return true unless the iterator is empty.
+       */
+      private[this] def fetchNextChunk(): Boolean = {
+        if (!chunkSizeIterator.hasNext) {
           false
         }
+        // if (size <= 0) {
+        //   return false
+        // }
+        byteArray = CS143Utils.getNextChunkBytes(inStream, chunkSizeIterator.next(),byteArray)
+        currentIterator = CS143Utils.getListFromBytes(byteArray).iterator.asScala
+        true
       }
+
     }
   }
 
@@ -189,13 +175,13 @@ private[sql] class DiskPartition (
     * also be closed.
     */
   def closeInput() = {
-    inputClosed = true
-    if(!writtenToDisk){
-      /* write to disk*/
+    
+    if(!data.isEmpty){
+      //println(data.size())
       spillPartitionToDisk()
+      data.clear()
     }
-    outStream.close()
-    closePartition()
+    inputClosed = true
   }
 
 
