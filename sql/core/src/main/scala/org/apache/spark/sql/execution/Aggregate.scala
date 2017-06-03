@@ -82,6 +82,10 @@ case class Aggregate(
           AttributeReference(s"aggResult:$a", a.dataType, a.nullable)())
     }
   }.toArray
+  
+  def getAggregators() ={
+    computedAggregates
+  }
 
   /** The schema of the result of all aggregate evaluations */
   private[this] val computedSchema = computedAggregates.map(_.resultAttribute)
