@@ -60,7 +60,7 @@ case class SpillableAggregate(
   private[this] val aggregatorSchema: AttributeReference = aggregator(_.resultAttribute)
 
   /** Creates a new aggregator instance.  */
-  private[this] def newAggregatorInstance(): AggregateFunction = aggregator(i).aggregate.newInstance()
+  private[this] def newAggregatorInstance(): AggregateFunction = aggregator.aggregate.newInstance()
 
 
   /** Named attributes used to substitute grouping attributes in the final result. */
