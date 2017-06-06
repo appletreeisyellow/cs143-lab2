@@ -192,8 +192,10 @@ object CS143Utils {
     */
   def maybeSpill[K, V](collection: SizeTrackingAppendOnlyMap[K, V], allowedMemory: Long): Boolean = {
     /* IMPLEMENT THIS METHOD */
-    var tablesize = collection.estimateSize()
-    if (tablesize  == allowedMemory) {
+    var estimatesize = collection.estimateSize()
+    var tablesize = collection.size
+
+    if (2* estimatesize  >= allowedMemory) {
     	true
     }
     else {
@@ -297,12 +299,20 @@ object AggregateIteratorGenerator {
 
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        false
+        input.hasNext
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+        val (currentGroup, currentAggregator) = input.next()
+
+          // aggregate result
+          val aggregateResults = new GenericMutableRow(1)
+          aggregateResults(0) = currentAggregator.eval(EmptyRow)
+
+          // concatenate aggregate result and group
+          val joinedRow = new JoinedRow4
+          postAggregateProjection(joinedRow(aggregateResults, currentGroup))
       }
     }
   }
