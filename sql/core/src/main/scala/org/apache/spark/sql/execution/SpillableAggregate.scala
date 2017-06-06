@@ -7,7 +7,6 @@
  * the License.  You may obtain a copy of the License at
  *
  *    http://www.apache.org/licenses/LICENSE-2.0
- *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -53,15 +52,25 @@ case class SpillableAggregate(
                                 aggregate: AggregateExpression,
                                 resultAttribute: AttributeReference)
 
-  /** Physical aggregator generated from a logical expression.  */
-  private[this] val aggregator: ComputedAggregate = Aggregate.ComputedAggregate.getAggregator[0]
 
+  /** A list of aggregates that need to be computed for each group. */
+  private[this] val computedAggregates = aggregateExpressions.flatMap { agg =>
+    agg.collect {
+      case a: AggregateExpression =>
+        ComputedAggregate(
+          a,
+          BindReferences.bindReference(a, child.output),
+          AttributeReference(s"aggResult:$a", a.dataType, a.nullable)())
+    }
+  }.toArray
+
+  /** Physical aggregator generated from a logical expression.  */
+  private[this] val aggregator: ComputedAggregate = computedAggregates(0)
   /** Schema of the aggregate.  */
-  private[this] val aggregatorSchema: AttributeReference = aggregator(_.resultAttribute)
+  private[this] val aggregatorSchema: AttributeReference = aggregator.resultAttribute
 
   /** Creates a new aggregator instance.  */
   private[this] def newAggregatorInstance(): AggregateFunction = aggregator.aggregate.newInstance()
-
 
   /** Named attributes used to substitute grouping attributes in the final result. */
   private[this] val namedGroups = groupingExpressions.map {
@@ -85,7 +94,7 @@ case class SpillableAggregate(
   }
   )
 
-  override def execute() = attachTree(this, "execute") {
+  override def execute() = attachTree(this, "execute") {///should be same as aggregate
     child.execute().mapPartitions(iter => generateIterator(iter))
   }
 
@@ -103,25 +112,48 @@ case class SpillableAggregate(
     var currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
     var data = input
 
-    def initSpills(): DiskHashedRelation  = {
+    def initSpills(): Array[DiskPartition]  = {
+      
       /* IMPLEMENT THIS METHOD */
-      null
+      //blockSize = 0
+      // create empty partitions
+      val blockSize = memorySize.toInt
+      val partitions: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
+      for (i <- 0 to numPartitions - 1) {
+        partitions(i) = new DiskPartition(i.toString, 0)
+      }
+
+      // return partition array
+      partitions
     }
 
     val spills = initSpills()
 
-    new Iterator[Row] {
+    new Iterator[Row] {///should be same as aggregate
       var aggregateResult: Iterator[Row] = aggregate()
 
+      val partitionIterator = spills.iterator
+
       def hasNext() = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        // IMPLEMENT ME
+
+        val result = aggregateResult.hasNext || (partitionIterator.hasNext && fetchSpill() )
+        if (!result) {
+          // close each DiskPartition
+          // remove partition temporary files
+          for (partition <- spills) {
+            partition.closePartition()
+          }
+        }
+        result
       }
 
       def next() = {
-        /* IMPLEMENT THIS METHOD */
-        null
+        // IMPLEMENT ME
+
+        aggregateResult.next()
       }
+
 
       /**
         * This method load the aggregation hash table by draining the data iterator
@@ -130,7 +162,35 @@ case class SpillableAggregate(
         */
       private def aggregate(): Iterator[Row] = {
         /* IMPLEMENT THIS METHOD */
-        null
+        var currentRow: Row = null
+        while (data.hasNext) {
+          currentRow = data.next()
+
+          val currentGroup = groupingProjection(currentRow)
+          var currentAggregator = currentAggregationTable(currentGroup)
+
+          if (currentAggregator == null) {
+            if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
+              spillRecord(currentRow)
+            } else {
+              currentAggregator = newAggregatorInstance()
+              currentAggregationTable.update(currentGroup.copy(), currentAggregator)
+            }
+          }
+          if (currentAggregator != null) {
+            currentAggregator.update(currentRow)
+          }
+        }
+
+        // close each DiskPartition's input
+        // flush memory to disk for each partition
+        for (partition <- spills) {
+          partition.closeInput()
+        }
+
+        // return Aggregate Result Iterator
+        AggregateIteratorGenerator(resultExpression, Seq(aggregatorSchema) ++ namedGroups.map(_._2))(currentAggregationTable.iterator)
+
       }
 
       /**
@@ -140,6 +200,7 @@ case class SpillableAggregate(
         */
       private def spillRecord(row: Row)  = {
         /* IMPLEMENT THIS METHOD */
+        spills(row.hashCode % numPartitions).insert(row)
       }
 
       /**
@@ -157,8 +218,24 @@ case class SpillableAggregate(
         * @return
         */
       private def fetchSpill(): Boolean  = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        // IMPLEMENT ME
+
+        // get row iterator of next Non-Empty partition
+        while (!data.hasNext && partitionIterator.hasNext) {
+          val partition = partitionIterator.next()
+          data = partition.getData()
+        }
+
+        if (!data.hasNext) {
+          false
+        } else {
+
+          // clear Aggregation Table
+          currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
+          aggregateResult = aggregate()
+
+          true
+        }
       }
     }
   }
