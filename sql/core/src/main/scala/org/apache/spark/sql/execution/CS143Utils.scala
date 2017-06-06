@@ -192,7 +192,13 @@ object CS143Utils {
     */
   def maybeSpill[K, V](collection: SizeTrackingAppendOnlyMap[K, V], allowedMemory: Long): Boolean = {
     /* IMPLEMENT THIS METHOD */
-    false
+    var tablesize = collection.estimateSize()
+    if (tablesize  == allowedMemory) {
+    	true
+    }
+    else {
+    	false
+    }
   }
 }
 
