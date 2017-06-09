@@ -243,7 +243,7 @@ object CachingIteratorGenerator {
         if(input.hasNext)
           true
         else {
-          cache.clear // TODO: do we need to clear cache?
+          cache.clear 
           false
         }
       }
@@ -266,8 +266,12 @@ object CachingIteratorGenerator {
             cache.get(key)
           } else {
             val result: JavaArrayList[Any] = new JavaArrayList()
+
+            // the concatenation of the projection of the preUdfExpressions,
+            //                      the evaluation of the udf,
+            //                      the projection of the postUdfExpressions
             preUdfProjection(inputRow).iterator.foreach{ (c: Any) => result.add(c) }
-            udfProject(inputRow).iterator.foreach{ (c: Any) => result.add(c) } // TODO: only one udf right? then don't need to iterate
+            result.add(udfProject(inputRow)(0))
             postUdfProjection(inputRow).iterator.foreach{ (c: Any) => result.add(c) }
             val value: Row = Row.fromSeq(result.toArray)
             cache.put(key, value)

@@ -216,25 +216,20 @@ case class SpillableAggregate(
         * @return
         */
       private def fetchSpill(): Boolean  = {
-        //false
         // IMPLEMENT ME
 
-        // get row iterator of next Non-Empty partition
+        // get row data of next disk partition (not empty)
         while (!data.hasNext && diskPartitionIterator.hasNext) {
-          val thispartition = diskPartitionIterator.next()
-          data = thispartition.getData()
+          data = diskPartitionIterator.next.getData()
         }
 
-        if (!data.hasNext) {
-          false
-        } 
-        else {
-
+        if (data.hasNext) {
           // clear Aggregation Table and aggregateResult
           currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
           aggregateResult = aggregate()
-
           true
+        } else {
+          false
         }
         
       }
