@@ -113,18 +113,16 @@ case class SpillableAggregate(
     var data = input
 
     def initSpills(): Array[DiskPartition]  = {
-      
+      //initialize partitions with size 0 and number of partitions = numPartitions
       /* IMPLEMENT THIS METHOD */
       //blockSize = 0
       // create empty partitions
-      val blockSize = memorySize.toInt
-      val partitions: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
+      val partitionarray: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
       for (i <- 0 to numPartitions - 1) {
-        partitions(i) = new DiskPartition(i.toString, 0)
+        partitionarray(i) = new DiskPartition(i.toString, 0)
       }
-
-      // return partition array
-      partitions
+      // return the array of partitions
+      partitionarray
     }
 
     val spills = initSpills()
@@ -136,13 +134,13 @@ case class SpillableAggregate(
 
       def hasNext() = {
         // IMPLEMENT ME
-
-        val result = aggregateResult.hasNext || (partitionIterator.hasNext && fetchSpill() )
+        //val result = aggregateResult.hasNext //part 6
+        val result = aggregateResult.hasNext || (partitionIterator.hasNext && fetchSpill())
         if (!result) {
           // close each DiskPartition
           // remove partition temporary files
-          for (partition <- spills) {
-            partition.closePartition()
+          for (thispartition <- spills) {
+            thispartition.closePartition()
           }
         }
         result
@@ -150,7 +148,6 @@ case class SpillableAggregate(
 
       def next() = {
         // IMPLEMENT ME
-
         aggregateResult.next()
       }
 
@@ -162,30 +159,36 @@ case class SpillableAggregate(
         */
       private def aggregate(): Iterator[Row] = {
         /* IMPLEMENT THIS METHOD */
-        var currentRow: Row = null
+        var thisRow: Row = null
         while (data.hasNext) {
-          currentRow = data.next()
+          thisRow = data.next()
 
-          val currentGroup = groupingProjection(currentRow)
-          var currentAggregator = currentAggregationTable(currentGroup)
-
-          if (currentAggregator == null) {
+          val thisGroup = groupingProjection(thisRow)
+          var thisAggregator = currentAggregationTable(thisGroup)
+          // if currentaggregator is not in the table
+          if (thisAggregator == null) {
+            //check if we need to spill to disk
             if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
-              spillRecord(currentRow)
-            } else {
-              currentAggregator = newAggregatorInstance()
-              currentAggregationTable.update(currentGroup.copy(), currentAggregator)
+              spillRecord(thisRow)
+            } 
+            else {
+              //if we do not need to spill to disk, update the table with the new [K,V] pair
+              thisAggregator = newAggregatorInstance()
+              //currentAggregationTable.update(currentGroup.copy(), thisAggregator)
+              currentAggregationTable.update(thisGroup, thisAggregator)
+
             }
           }
-          if (currentAggregator != null) {
-            currentAggregator.update(currentRow)
+          else {
+            //if currentaggregator is in the table already, update the value
+            thisAggregator.update(thisRow)
           }
         }
 
         // close each DiskPartition's input
         // flush memory to disk for each partition
-        for (partition <- spills) {
-          partition.closeInput()
+        for (thispartition <- spills) {
+          thispartition.closeInput()
         }
 
         // return Aggregate Result Iterator
@@ -218,24 +221,27 @@ case class SpillableAggregate(
         * @return
         */
       private def fetchSpill(): Boolean  = {
+        //false
         // IMPLEMENT ME
 
         // get row iterator of next Non-Empty partition
         while (!data.hasNext && partitionIterator.hasNext) {
-          val partition = partitionIterator.next()
-          data = partition.getData()
+          val thispartition = partitionIterator.next()
+          data = thispartition.getData()
         }
 
         if (!data.hasNext) {
           false
-        } else {
+        } 
+        else {
 
-          // clear Aggregation Table
+          // clear Aggregation Table and aggregateResult
           currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
           aggregateResult = aggregate()
 
           true
         }
+        
       }
     }
   }
