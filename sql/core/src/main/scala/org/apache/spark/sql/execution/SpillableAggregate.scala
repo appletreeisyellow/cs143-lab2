@@ -114,18 +114,16 @@ case class SpillableAggregate(
     var data = input
 
     def initSpills(): Array[DiskPartition]  = {
-      
+      //initialize partitions with size 0 and number of partitions = numPartitions
       /* IMPLEMENT THIS METHOD */
       //blockSize = 0
       // create empty partitions
-      val blockSize = memorySize.toInt
-      val partitions: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
+      val partitionarray: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
       for (i <- 0 to numPartitions - 1) {
-        partitions(i) = new DiskPartition(i.toString, 0)
+        partitionarray(i) = new DiskPartition(i.toString, 0)
       }
-
-      // return partition array
-      partitions
+      // return the array of partitions
+      partitionarray
     }
 
     val spills = initSpills()
@@ -215,24 +213,27 @@ case class SpillableAggregate(
         * @return
         */
       private def fetchSpill(): Boolean  = {
+        //false
         // IMPLEMENT ME
 
         // get row iterator of next Non-Empty partition
         while (!data.hasNext && partitionIterator.hasNext) {
-          val partition = partitionIterator.next()
-          data = partition.getData()
+          val thispartition = partitionIterator.next()
+          data = thispartition.getData()
         }
 
         if (!data.hasNext) {
           false
-        } else {
+        } 
+        else {
 
-          // clear Aggregation Table
+          // clear Aggregation Table and aggregateResult
           currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
           aggregateResult = aggregate()
 
           true
         }
+        
       }
     }
   }
