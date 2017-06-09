@@ -304,15 +304,17 @@ object AggregateIteratorGenerator {
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        val (currentGroup, currentAggregator) = input.next()
 
-          // aggregate result
-          val aggregateResults = new GenericMutableRow(1)
-          aggregateResults(0) = currentAggregator.eval(EmptyRow)
+        //println(row)  // [1]
+        //println(aggregateFunction)  // CountFunction input[0], COUNT(input[0])
+        val (row, aggregateFunction) = input.next()
 
-          // concatenate aggregate result and group
-          val joinedRow = new JoinedRow4
-          postAggregateProjection(joinedRow(aggregateResults, currentGroup))
+        // Get aggregate result
+        val aggregateResult = new GenericMutableRow(1)
+        aggregateResult(0) = aggregateFunction.eval()
+
+        // The result is the concatenation of the aggregate result plus the related group data.
+        postAggregateProjection(new JoinedRow4(aggregateResult, row))
       }
     }
   }

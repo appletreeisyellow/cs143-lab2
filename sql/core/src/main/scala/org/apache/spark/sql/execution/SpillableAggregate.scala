@@ -66,6 +66,7 @@ case class SpillableAggregate(
 
   /** Physical aggregator generated from a logical expression.  */
   private[this] val aggregator: ComputedAggregate = computedAggregates(0)
+
   /** Schema of the aggregate.  */
   private[this] val aggregatorSchema: AttributeReference = aggregator.resultAttribute
 
@@ -137,20 +138,18 @@ case class SpillableAggregate(
       def hasNext() = {
         // IMPLEMENT ME
 
-        val result = aggregateResult.hasNext || (partitionIterator.hasNext && fetchSpill() )
-        if (!result) {
-          // close each DiskPartition
-          // remove partition temporary files
-          for (partition <- spills) {
-            partition.closePartition()
-          }
+        if(aggregateResult.hasNext) {
+          true
+        } else {
+          if(partitionIterator.hasNext && fetchSpill())
+            true
+          else
+            false
         }
-        result
       }
 
       def next() = {
         // IMPLEMENT ME
-
         aggregateResult.next()
       }
 
@@ -162,33 +161,31 @@ case class SpillableAggregate(
         */
       private def aggregate(): Iterator[Row] = {
         /* IMPLEMENT THIS METHOD */
-        var currentRow: Row = null
+
         while (data.hasNext) {
-          currentRow = data.next()
+          val row: Row = data.next()
+          val group = groupingProjection(row)
+          var aggregator = currentAggregationTable(group)
 
-          val currentGroup = groupingProjection(currentRow)
-          var currentAggregator = currentAggregationTable(currentGroup)
-
-          if (currentAggregator == null) {
-            if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
-              spillRecord(currentRow)
+          if (aggregator == null) {
+            if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) { // spill to disk
+              spillRecord(row)
             } else {
-              currentAggregator = newAggregatorInstance()
-              currentAggregationTable.update(currentGroup.copy(), currentAggregator)
+              aggregator = newAggregatorInstance()
+              currentAggregationTable.update(group.copy(), aggregator)
             }
-          }
-          if (currentAggregator != null) {
-            currentAggregator.update(currentRow)
-          }
+          } 
+
+          aggregator.update(row)
+
+        } // end of while
+
+
+        for (diskPartition <- spills) {
+          diskPartition.closeInput()
         }
 
-        // close each DiskPartition's input
-        // flush memory to disk for each partition
-        for (partition <- spills) {
-          partition.closeInput()
-        }
-
-        // return Aggregate Result Iterator
+        // return Aggregate Iterator Generator
         AggregateIteratorGenerator(resultExpression, Seq(aggregatorSchema) ++ namedGroups.map(_._2))(currentAggregationTable.iterator)
 
       }
