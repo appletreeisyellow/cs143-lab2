@@ -114,16 +114,18 @@ case class SpillableAggregate(
     var data = input
 
     def initSpills(): Array[DiskPartition]  = {
-      //initialize partitions with size 0 and number of partitions = numPartitions
       /* IMPLEMENT THIS METHOD */
+
+      //initialize partitions with size 0 and number of partitions = numPartitions
       //blockSize = 0
-      // create empty partitions
-      val partitionarray: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
+      // Empty partitions
+      val partitionArray: Array[DiskPartition] = new Array[DiskPartition](numPartitions)
+
       for (i <- 0 to numPartitions - 1) {
-        partitionarray(i) = new DiskPartition(i.toString, 0)
+        partitionArray(i) = new DiskPartition(i.toString(), 0)
       }
-      // return the array of partitions
-      partitionarray
+      
+      partitionArray
     }
 
     val spills = initSpills()
@@ -131,7 +133,7 @@ case class SpillableAggregate(
     new Iterator[Row] {///should be same as aggregate
       var aggregateResult: Iterator[Row] = aggregate()
 
-      val partitionIterator = spills.iterator
+      val diskPartitionIterator = spills.iterator
 
       def hasNext() = {
         // IMPLEMENT ME
@@ -139,9 +141,9 @@ case class SpillableAggregate(
         if(aggregateResult.hasNext) {
           true
         } else {
-          if(partitionIterator.hasNext && fetchSpill())
+          if(diskPartitionIterator.hasNext && fetchSpill())
             true
-          else
+          else 
             false
         }
       }
@@ -174,7 +176,8 @@ case class SpillableAggregate(
             }
           } 
 
-          aggregator.update(row)
+          if(aggregator != null) // check again if the aggregator is null. for Task 6
+            aggregator.update(row)
 
         } // end of while
 
@@ -217,8 +220,8 @@ case class SpillableAggregate(
         // IMPLEMENT ME
 
         // get row iterator of next Non-Empty partition
-        while (!data.hasNext && partitionIterator.hasNext) {
-          val thispartition = partitionIterator.next()
+        while (!data.hasNext && diskPartitionIterator.hasNext) {
+          val thispartition = diskPartitionIterator.next()
           data = thispartition.getData()
         }
 
